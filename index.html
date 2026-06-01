@@ -33,9 +33,15 @@
     <div>
         <button onclick="addRow()">+ Add Row</button>
         <button onclick="removeRow()">- Remove Row</button>
-        <button onclick="addCol()">+ Add Column Pair</button>
-        <button onclick="removeCol()">- Remove Column Pair</button>
+        <button onclick="addCol()">+ Add Col</button>
+        <button onclick="removeCol()">- Remove Col</button>
         <button onclick="manualSave()">Save Progress</button>
+    </div>
+    
+    <div style="margin: 10px 0; background: #e9ecef; padding: 10px; border-radius: 8px; display: inline-block;">
+        Rows: <input type="number" id="startRow" value="1" style="width: 40px;"> to <input type="number" id="endRow" value="1" style="width: 40px;"> |
+        Cols: <input type="number" id="startCol" value="1" style="width: 40px;"> to <input type="number" id="endCol" value="1" style="width: 40px;">
+        <button onclick="copyRange()" style="background: #1b4332;">Copy Selected Range</button>
     </div>
 
     <div id="spreadsheet" style="margin-top:20px; border: 3px solid #2d6a4f; border-radius: 8px; display: inline-block;"></div>
@@ -69,7 +75,6 @@
             const container = document.getElementById('spreadsheet');
             container.innerHTML = '';
             
-            // Render Headers
             const headerRow = document.createElement('div'); headerRow.className = 'header-row';
             headerRow.appendChild(document.createElement('div')).style.width = '40px';
             for(let i=0; i<gridData.cols; i++) {
@@ -78,7 +83,6 @@
             }
             container.appendChild(headerRow);
 
-            // Render Rows
             for(let r=0; r<gridData.rows; r++) {
                 const rowDiv = document.createElement('div'); rowDiv.className = 'row-container';
                 const num = document.createElement('div'); num.className = 'row-num'; num.textContent = r+1;
@@ -105,6 +109,22 @@
                 }
                 container.appendChild(rowDiv);
             }
+        }
+
+        function copyRange() {
+            syncDataFromDOM();
+            const rStart = parseInt(document.getElementById('startRow').value) - 1;
+            const rEnd = parseInt(document.getElementById('endRow').value) - 1;
+            const cStart = (parseInt(document.getElementById('startCol').value) - 1) * 2;
+            const cEnd = (parseInt(document.getElementById('endCol').value) * 2) - 1;
+            
+            let text = "";
+            for (let r = rStart; r <= rEnd; r++) {
+                let row = [];
+                for(let c = cStart; c <= cEnd; c++) row.push(gridData.values[`${r},${c}`] || "");
+                text += row.join("\t") + "\n";
+            }
+            navigator.clipboard.writeText(text).then(() => alert("Copied range to clipboard!"));
         }
 
         function manualSave() {
