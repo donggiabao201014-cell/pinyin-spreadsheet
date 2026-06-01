@@ -6,20 +6,18 @@
     <script src="https://unpkg.com/pinyin-pro@3.27.0/dist/index.js"></script>
     <style>
         body { font-family: 'Segoe UI', sans-serif; padding: 20px; background: #f4f7f6; color: #333; }
-        #spreadsheet { 
-            display: grid; background: white; width: fit-content; 
-            border: 3px solid #2d6a4f; border-radius: 8px;
-            overflow: visible; box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-        }
-        .cell { border: 1px solid #d8e2dc; padding: 0; min-width: 120px; }
+        
+        /* Using table for stable layout */
+        table { border-collapse: collapse; background: white; border: 3px solid #2d6a4f; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+        th, td { border: 1px solid #d8e2dc; padding: 0; }
+        
         .header { background: #2d6a4f; color: #ffffff; font-weight: bold; text-align: center; padding: 10px; }
         
         /* Dynamic and Resizable */
         textarea { 
-            display: block; width: 100%; padding: 8px; 
-            border: none; box-sizing: border-box; font-size: 16px;
-            resize: both; overflow: hidden; font-family: inherit;
-            background: transparent; min-height: 40px;
+            display: block; width: 100%; min-width: 120px; min-height: 40px; 
+            padding: 8px; border: none; box-sizing: border-box; font-size: 16px;
+            resize: both; overflow: hidden; font-family: inherit; background: transparent;
         }
         
         .hanzi-ta { color: black !important; font-weight: bold !important; }
@@ -49,7 +47,7 @@
         <button onclick="manualSave()">Save Progress</button>
     </div>
 
-    <div id="spreadsheet" style="margin-top:20px;"></div>
+    <table id="spreadsheet" style="margin-top:20px;"></table>
 
     <script>
         let gridData = { rows: 5, cols: 3, values: {} };
@@ -71,64 +69,40 @@
             });
         }
 
-        function addRow() {
-            syncDataFromDOM();
-            gridData.rows += 1;
-            renderGrid();
-        }
-
-        function removeRow() {
-            if (gridData.rows > 1) {
-                syncDataFromDOM();
-                gridData.rows -= 1;
-                renderGrid();
-            }
-        }
-
-        function addCol() {
-            syncDataFromDOM();
-            gridData.cols += 1;
-            renderGrid();
-        }
-
-        function removeCol() {
-            if (gridData.cols > 1) {
-                syncDataFromDOM();
-                gridData.cols -= 1;
-                renderGrid();
-            }
-        }
+        function addRow() { syncDataFromDOM(); gridData.rows += 1; renderGrid(); }
+        function removeRow() { if (gridData.rows > 1) { syncDataFromDOM(); gridData.rows -= 1; renderGrid(); } }
+        function addCol() { syncDataFromDOM(); gridData.cols += 1; renderGrid(); }
+        function removeCol() { if (gridData.cols > 1) { syncDataFromDOM(); gridData.cols -= 1; renderGrid(); } }
 
         function renderGrid() {
-            const sheet = document.getElementById('spreadsheet');
-            sheet.innerHTML = '';
-            sheet.style.gridTemplateColumns = `40px repeat(${gridData.cols * 2}, auto)`;
-
-            sheet.appendChild(document.createElement('div'));
+            const table = document.getElementById('spreadsheet');
+            table.innerHTML = '';
+            
+            // Header Row
+            let thead = table.insertRow();
+            thead.insertCell(); // Empty for row numbers
             for (let i = 0; i < gridData.cols; i++) {
-                const h1 = document.createElement('div'); h1.className = 'header'; h1.textContent = "Hanzi"; sheet.appendChild(h1);
-                const h2 = document.createElement('div'); h2.className = 'header'; h2.textContent = "Pinyin"; sheet.appendChild(h2);
+                let h1 = thead.insertCell(); h1.className = 'header'; h1.textContent = "Hanzi";
+                let h2 = thead.insertCell(); h2.className = 'header'; h2.textContent = "Pinyin";
             }
 
+            // Data Rows
             for (let r = 0; r < gridData.rows; r++) {
-                const rowNum = document.createElement('div');
-                rowNum.className = 'header'; rowNum.textContent = r + 1;
-                sheet.appendChild(rowNum);
+                let row = table.insertRow();
+                let numCell = row.insertCell();
+                numCell.className = 'header'; numCell.textContent = r + 1;
 
                 for (let c = 0; c < gridData.cols * 2; c++) {
-                    const cell = document.createElement('div');
-                    cell.className = 'cell ' + (c % 2 !== 0 ? 'pinyin-cell' : '');
-                    const ta = document.createElement('textarea');
+                    let cell = row.insertCell();
+                    if (c % 2 !== 0) cell.className = 'pinyin-cell';
                     
+                    const ta = document.createElement('textarea');
                     if (c % 2 === 0) ta.classList.add('hanzi-ta');
                     else ta.classList.add('pinyin-ta');
                     
                     ta.dataset.r = r; ta.dataset.c = c;
                     ta.value = gridData.values[`${r},${c}`] || "";
                     
-                    // Initial sizing
-                    setTimeout(() => autoResize(ta), 0);
-
                     ta.oninput = function() { 
                         autoResize(this);
                         if (c % 2 === 0) {
@@ -140,7 +114,7 @@
                         }
                     };
                     cell.appendChild(ta);
-                    sheet.appendChild(cell);
+                    setTimeout(() => autoResize(ta), 0);
                 }
             }
         }
