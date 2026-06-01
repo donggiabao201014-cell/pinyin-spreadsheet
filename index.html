@@ -126,6 +126,7 @@
                     ta.dataset.r = r; ta.dataset.c = c;
                     ta.value = gridData.values[`${r},${c}`] || "";
                     
+                    // Initial sizing
                     setTimeout(() => autoResize(ta), 0);
 
                     ta.oninput = function() { 
