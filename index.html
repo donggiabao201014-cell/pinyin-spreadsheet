@@ -9,17 +9,24 @@
         #spreadsheet { 
             display: grid; background: white; width: fit-content; 
             border: 3px solid #2d6a4f; border-radius: 8px;
-            overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            overflow: visible; box-shadow: 0 4px 12px rgba(0,0,0,0.15);
         }
         .cell { border: 1px solid #d8e2dc; padding: 0; min-width: 120px; }
         .header { background: #2d6a4f; color: #ffffff; font-weight: bold; text-align: center; padding: 10px; }
+        
+        /* User-resizable and clean */
         textarea { 
-            display: block; width: 100%; padding: 8px; border: none; box-sizing: border-box; 
-            font-size: 16px; resize: none; overflow: hidden; font-family: inherit;
-            background: transparent; color: #1b4332; min-height: 40px;
+            display: block; width: 100%; height: 40px; padding: 8px; 
+            border: none; box-sizing: border-box; font-size: 16px;
+            resize: both; overflow: auto; font-family: inherit;
+            background: transparent; min-height: 40px;
         }
+        
+        .hanzi-ta { color: black; font-weight: bold; }
+        
         textarea:focus { outline: none; background: #d8f3dc; box-shadow: inset 0 0 0 2px #2d6a4f; }
         .pinyin-cell { background: #f8f9fa; color: #1b4332; font-weight: 500; }
+        
         button { padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; background: #2d6a4f; color: white; }
         button:hover { background: #1b4332; }
     </style>
@@ -38,71 +45,69 @@
     <div id="spreadsheet" style="margin-top:20px;"></div>
 
     <script>
+        // Data persists in this variable across re-renders
+        let gridData = { rows: 5, cols: 3, values: {} };
+
         window.onload = () => {
             const saved = localStorage.getItem('pinyinData');
             if (saved) {
                 const data = JSON.parse(saved);
-                render(data.rows, data.cols, data.values);
-            } else {
-                render(5, 3);
+                gridData = data;
             }
+            renderGrid();
         };
 
-        function autoResize(ta) {
-            ta.style.height = 'auto';
-            ta.style.height = ta.scrollHeight + 'px';
+        function syncDataFromDOM() {
+            document.querySelectorAll('textarea').forEach(ta => {
+                gridData.values[`${ta.dataset.r},${ta.dataset.c}`] = ta.value;
+            });
         }
 
         function resizeGrid() {
-            // Save current data before resizing
-            const allTAs = document.querySelectorAll('textarea');
-            let maxR = 0, maxC = 0;
-            allTAs.forEach(ta => { maxR = Math.max(maxR, parseInt(ta.dataset.r)); maxC = Math.max(maxC, parseInt(ta.dataset.c)); });
-            let currentValues = Array.from({ length: maxR + 1 }, () => Array(maxC + 1).fill(""));
-            allTAs.forEach(ta => currentValues[ta.dataset.r][ta.dataset.c] = ta.value);
-
-            const r = parseInt(prompt("New Rows:", maxR + 1));
-            const c = parseInt(prompt("New Input Pairs (Columns):", (maxC + 1) / 2));
-            if(r && c) render(r, c, currentValues);
+            syncDataFromDOM();
+            const newRows = parseInt(prompt("New Row count:", gridData.rows));
+            const newCols = parseInt(prompt("New Column pairs:", gridData.cols));
+            
+            if (newRows && newCols) {
+                gridData.rows = newRows;
+                gridData.cols = newCols;
+                renderGrid();
+            }
         }
 
-        function render(rows, cols, savedValues = []) {
+        function renderGrid() {
             const sheet = document.getElementById('spreadsheet');
             sheet.innerHTML = '';
-            sheet.style.gridTemplateColumns = `40px repeat(${cols * 2}, auto)`;
+            sheet.style.gridTemplateColumns = `40px repeat(${gridData.cols * 2}, auto)`;
 
+            // Headers
             sheet.appendChild(document.createElement('div'));
-            for (let i = 0; i < cols; i++) {
+            for (let i = 0; i < gridData.cols; i++) {
                 const h1 = document.createElement('div'); h1.className = 'header'; h1.textContent = "Hanzi"; sheet.appendChild(h1);
                 const h2 = document.createElement('div'); h2.className = 'header'; h2.textContent = "Pinyin"; sheet.appendChild(h2);
             }
 
-            for (let r = 0; r < rows; r++) {
+            // Cells
+            for (let r = 0; r < gridData.rows; r++) {
                 const rowNum = document.createElement('div');
                 rowNum.className = 'header'; rowNum.textContent = r + 1;
                 sheet.appendChild(rowNum);
 
-                for (let c = 0; c < cols * 2; c++) {
+                for (let c = 0; c < gridData.cols * 2; c++) {
                     const cell = document.createElement('div');
                     cell.className = 'cell ' + (c % 2 !== 0 ? 'pinyin-cell' : '');
                     const ta = document.createElement('textarea');
+                    
+                    if (c % 2 === 0) ta.classList.add('hanzi-ta');
                     ta.dataset.r = r; ta.dataset.c = c;
-                    if (savedValues[r] && savedValues[r][c] !== undefined) ta.value = savedValues[r][c];
+                    ta.value = gridData.values[`${r},${c}`] || "";
                     
                     ta.oninput = function() { 
-                        autoResize(this);
                         if (c % 2 === 0) {
                             const pinyinCell = document.querySelector(`textarea[data-r="${r}"][data-c="${c + 1}"]`);
-                            if (pinyinCell) {
-                                pinyinCell.value = pinyinPro.pinyin(this.value.replace(/\s+/g, ''), { toneType: 'symbol' });
-                                autoResize(pinyinCell);
-                            }
+                            if (pinyinCell) pinyinCell.value = pinyinPro.pinyin(this.value.replace(/\s+/g, ''), { toneType: 'symbol' });
                         }
                     };
-                    
-                    // Trigger resize immediately for loaded data
-                    setTimeout(() => autoResize(ta), 0);
-                    
                     cell.appendChild(ta);
                     sheet.appendChild(cell);
                 }
@@ -110,23 +115,21 @@
         }
 
         function copyRange() {
+            syncDataFromDOM();
             const start = parseInt(document.getElementById('startRow').value) - 1;
             const end = parseInt(document.getElementById('endRow').value) - 1;
             let text = "";
             for (let r = start; r <= end; r++) {
-                const rowTAs = Array.from(document.querySelectorAll(`textarea[data-r="${r}"]`));
-                text += rowTAs.map(t => t.value).join("\t") + "\n";
+                let row = [];
+                for(let c = 0; c < gridData.cols * 2; c++) row.push(gridData.values[`${r},${c}`] || "");
+                text += row.join("\t") + "\n";
             }
             navigator.clipboard.writeText(text).then(() => alert("Copied!"));
         }
 
         function manualSave() {
-            const allTAs = document.querySelectorAll('textarea');
-            let maxR = 0, maxC = 0;
-            allTAs.forEach(ta => { maxR = Math.max(maxR, parseInt(ta.dataset.r)); maxC = Math.max(maxC, parseInt(ta.dataset.c)); });
-            let values = Array.from({ length: maxR + 1 }, () => Array(maxC + 1).fill(""));
-            allTAs.forEach(ta => values[ta.dataset.r][ta.dataset.c] = ta.value);
-            localStorage.setItem('pinyinData', JSON.stringify({rows: maxR + 1, cols: maxC + 1, values: values}));
+            syncDataFromDOM();
+            localStorage.setItem('pinyinData', JSON.stringify(gridData));
             alert("Progress Saved!");
         }
     </script>
