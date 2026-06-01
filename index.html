@@ -28,26 +28,22 @@
         textarea:focus { outline: none; background: #d8f3dc; box-shadow: inset 0 0 0 2px #2d6a4f; }
         .pinyin-cell { background: #f8f9fa; }
         
-        button { padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; background: #2d6a4f; color: white; margin-bottom: 5px; }
+        button { padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; background: #2d6a4f; color: white; }
         button:hover { background: #1b4332; }
     </style>
 </head>
 <body>
 
     <h2>Pinyin Spreadsheet</h2>
-    <div>
-        <button onclick="addRow()">+ Add Row</button>
-        <button onclick="removeRow()">- Remove Row</button>
-        <button onclick="addCol()">+ Add Column Pair</button>
-        <button onclick="removeCol()">- Remove Column Pair</button>
-    </div>
+    <button onclick="addRow()">+ Add Row</button>
+    <button onclick="addCol()">+ Add Column Pair</button>
     
-    <div style="margin: 10px 0;">
+    <span style="margin: 0 10px;">
         Rows: <input type="number" id="startRow" value="1" style="width: 40px;"> to 
         <input type="number" id="endRow" value="5" style="width: 40px;">
         <button onclick="copyRange()">Copy Range</button>
-        <button onclick="manualSave()">Save Progress</button>
-    </div>
+    </span>
+    <button onclick="manualSave()">Save Progress</button>
 
     <div id="spreadsheet" style="margin-top:20px;"></div>
 
@@ -60,6 +56,7 @@
             renderGrid();
         };
 
+        // Dynamic resizing function
         function autoResize(ta) {
             ta.style.height = 'auto';
             ta.style.height = ta.scrollHeight + 'px';
@@ -77,26 +74,10 @@
             renderGrid();
         }
 
-        function removeRow() {
-            if (gridData.rows > 1) {
-                syncDataFromDOM();
-                gridData.rows -= 1;
-                renderGrid();
-            }
-        }
-
         function addCol() {
             syncDataFromDOM();
             gridData.cols += 1;
             renderGrid();
-        }
-
-        function removeCol() {
-            if (gridData.cols > 1) {
-                syncDataFromDOM();
-                gridData.cols -= 1;
-                renderGrid();
-            }
         }
 
         function renderGrid() {
@@ -126,7 +107,7 @@
                     ta.dataset.r = r; ta.dataset.c = c;
                     ta.value = gridData.values[`${r},${c}`] || "";
                     
-                    // Initial sizing
+                    // Apply dynamic height on load
                     setTimeout(() => autoResize(ta), 0);
 
                     ta.oninput = function() { 
