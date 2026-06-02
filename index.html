@@ -6,22 +6,29 @@
     <script src="https://unpkg.com/pinyin-pro@3.27.0/dist/index.js"></script>
     <style>
         body { font-family: 'Segoe UI', sans-serif; padding: 20px; background: #f4f7f6; color: #333; }
-        .controls { margin-bottom: 20px; display: flex; gap: 8px; align-items: center; }
+        .controls { margin-bottom: 20px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
         
-        .sheet-container { overflow: auto; max-width: 95vw; max-height: 80vh; border: 3px solid #2d6a4f; border-radius: 8px; }
-        
-        #spreadsheet { 
-            display: grid; background: white; width: max-content; 
-            grid-auto-columns: minmax(120px, auto);
+        .sheet-container { 
+            overflow: auto; max-width: 95vw; max-height: 80vh; 
+            border: 3px solid #2d6a4f; border-radius: 8px; 
+            transition: all 0.3s ease;
         }
         
+        #spreadsheet { 
+            display: grid; background: white; 
+            width: max-content; 
+        }
+
+        .mode-split { width: 100% !important; }
+        .mode-split #spreadsheet { width: 100% !important; }
+
         .cell { border: 1px solid #d8e2dc; padding: 0; position: relative; display: flex; }
         .cell.selected { background: #cce5ff !important; box-shadow: inset 0 0 0 2px #007bff; }
         .header { background: #2d6a4f; color: #ffffff; font-weight: bold; text-align: center; padding: 10px; position: sticky; top: 0; z-index: 10; }
         
         textarea { 
             width: 100%; height: 100%; padding: 8px; border: none; box-sizing: border-box; 
-            font-size: 16px; resize: both; overflow: auto; font-family: inherit; background: transparent; 
+            font-size: 16px; resize: none; font-family: inherit; background: transparent; 
             min-height: 40px; min-width: 100px;
         }
         
@@ -29,8 +36,8 @@
         button { padding: 8px 12px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
         .btn-add { background: #2d6a4f; color: white; }
         .btn-sub { background: #b02a2a; color: white; }
+        .btn-mode { background: #555; color: white; }
     </style>
-    <link rel="icon" type="images/png" href="images.png">
 </head>
 <body>
 
@@ -40,11 +47,12 @@
         <button class="btn-sub" onclick="subRow()">- Row</button>
         <button class="btn-add" onclick="addCol()">+ Col</button>
         <button class="btn-sub" onclick="subCol()">- Col</button>
+        <button class="btn-mode" onclick="toggleMode()">Toggle Split/Scroll</button>
         <button onclick="manualSave()" style="background: #217346; color: white;">Save</button>
         <small id="status"></small>
     </div>
 
-    <div class="sheet-container">
+    <div class="sheet-container" id="container">
         <div id="spreadsheet"></div>
     </div>
 
@@ -52,6 +60,7 @@
         let gridData = { rows: 5, cols: 3, values: {} };
         let selectedCells = new Set();
         let lastClickedCell = null;
+        let isSplitMode = false;
 
         window.onload = () => {
             const saved = localStorage.getItem('pinyinData');
@@ -59,10 +68,15 @@
             renderGrid();
         };
 
+        function toggleMode() {
+            isSplitMode = !isSplitMode;
+            renderGrid();
+        }
+
         function syncDataFromDOM() {
             gridData.values = {};
             document.querySelectorAll('textarea').forEach(ta => {
-                gridData.values[`${ta.dataset.r},${ta.dataset.c}`] = { text: ta.value, width: ta.style.width };
+                gridData.values[`${ta.dataset.r},${ta.dataset.c}`] = { text: ta.value };
             });
         }
 
@@ -73,10 +87,17 @@
 
         function renderGrid() {
             const sheet = document.getElementById('spreadsheet');
-            sheet.style.gridTemplateColumns = `40px repeat(${gridData.cols * 2}, auto)`;
+            const container = document.getElementById('container');
+            
+            if (isSplitMode) {
+                container.classList.add('mode-split');
+                sheet.style.gridTemplateColumns = `40px repeat(${gridData.cols * 2}, 1fr)`;
+            } else {
+                container.classList.remove('mode-split');
+                sheet.style.gridTemplateColumns = `40px repeat(${gridData.cols * 2}, minmax(120px, auto))`;
+            }
             
             const fragment = document.createDocumentFragment();
-            
             fragment.appendChild(document.createElement('div'));
             for (let i = 0; i < gridData.cols; i++) {
                 const h1 = document.createElement('div'); h1.className = 'header'; h1.textContent = "Hanzi";
@@ -96,14 +117,10 @@
                     ta.dataset.r = r; ta.dataset.c = c;
                     
                     const cellData = gridData.values[`${r},${c}`];
-                    if (cellData) {
-                        ta.value = cellData.text || "";
-                        if (cellData.width) ta.style.width = cellData.width;
-                    }
+                    if (cellData) ta.value = cellData.text || "";
 
                     ta.onmousedown = handleMouseDown;
                     ta.oninput = handleInput;
-                    ta.onmouseup = () => { syncDataFromDOM(); };
                     
                     cell.appendChild(ta);
                     fragment.appendChild(cell);
@@ -141,7 +158,6 @@
         }
 
         document.addEventListener('keydown', (e) => {
-            // Handle Navigation
             if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
                 const active = document.activeElement;
                 if (active.tagName === 'TEXTAREA') {
@@ -152,7 +168,6 @@
                 }
             }
             
-            // Handle Copy (Ctrl/Cmd + C)
             if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
                 if (selectedCells.size > 0) {
                     const sortedCells = Array.from(selectedCells).sort((a, b) => a.dataset.r - b.dataset.r || a.dataset.c - b.dataset.c);
@@ -171,7 +186,6 @@
                 }
             }
 
-            // Handle Delete
             if (e.key === 'Delete' || e.key === 'Backspace') {
                 selectedCells.forEach(ta => { ta.value = ''; });
                 syncDataFromDOM();
