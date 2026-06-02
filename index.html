@@ -6,14 +6,26 @@
     <script src="https://unpkg.com/pinyin-pro@3.27.0/dist/index.js"></script>
     <style>
         body { font-family: 'Segoe UI', sans-serif; padding: 20px; background: #f4f7f6; color: #333; }
-        #spreadsheet { display: grid; background: white; width: fit-content; border: 3px solid #2d6a4f; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
-        .cell { border: 1px solid #d8e2dc; padding: 0; min-width: 120px; position: relative; }
-        .cell.selected { background: #cce5ff !important; box-shadow: inset 0 0 0 2px #007bff; }
-        .header { background: #2d6a4f; color: #ffffff; font-weight: bold; text-align: center; padding: 10px; user-select: none; }
-        textarea { display: block; width: 100%; padding: 8px; border: none; box-sizing: border-box; font-size: 16px; resize: none; overflow: hidden; font-family: inherit; background: transparent; min-height: 40px; }
-        textarea:focus { outline: none; background: #d8f3dc; }
-        .pinyin-cell { background: #f8f9fa; }
         .controls { margin-bottom: 20px; display: flex; gap: 8px; align-items: center; }
+        
+        .sheet-container { overflow: auto; max-width: 95vw; max-height: 80vh; border: 3px solid #2d6a4f; border-radius: 8px; }
+        
+        #spreadsheet { 
+            display: grid; background: white; width: max-content; 
+            grid-auto-columns: minmax(120px, auto);
+        }
+        
+        .cell { border: 1px solid #d8e2dc; padding: 0; position: relative; display: flex; }
+        .cell.selected { background: #cce5ff !important; box-shadow: inset 0 0 0 2px #007bff; }
+        .header { background: #2d6a4f; color: #ffffff; font-weight: bold; text-align: center; padding: 10px; position: sticky; top: 0; z-index: 10; }
+        
+        textarea { 
+            width: 100%; height: 100%; padding: 8px; border: none; box-sizing: border-box; 
+            font-size: 16px; resize: both; overflow: auto; font-family: inherit; background: transparent; 
+            min-height: 40px; min-width: 100px;
+        }
+        
+        .pinyin-cell { background: #f8f9fa; }
         button { padding: 8px 12px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
         .btn-add { background: #2d6a4f; color: white; }
         .btn-sub { background: #b02a2a; color: white; }
@@ -31,7 +43,9 @@
         <small id="status"></small>
     </div>
 
-    <div id="spreadsheet"></div>
+    <div class="sheet-container">
+        <div id="spreadsheet"></div>
+    </div>
 
     <script>
         let gridData = { rows: 5, cols: 3, values: {} };
@@ -44,12 +58,10 @@
             renderGrid();
         };
 
-        function autoResize(ta) { ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 'px'; }
-
         function syncDataFromDOM() {
             gridData.values = {};
             document.querySelectorAll('textarea').forEach(ta => {
-                gridData.values[`${ta.dataset.r},${ta.dataset.c}`] = ta.value;
+                gridData.values[`${ta.dataset.r},${ta.dataset.c}`] = { text: ta.value, width: ta.style.width };
             });
         }
 
@@ -60,91 +72,108 @@
 
         function renderGrid() {
             const sheet = document.getElementById('spreadsheet');
-            sheet.innerHTML = '';
             sheet.style.gridTemplateColumns = `40px repeat(${gridData.cols * 2}, auto)`;
-            sheet.appendChild(document.createElement('div'));
+            
+            const fragment = document.createDocumentFragment();
+            
+            fragment.appendChild(document.createElement('div'));
             for (let i = 0; i < gridData.cols; i++) {
-                sheet.innerHTML += `<div class="header">Hanzi</div><div class="header">Pinyin</div>`;
+                const h1 = document.createElement('div'); h1.className = 'header'; h1.textContent = "Hanzi";
+                const h2 = document.createElement('div'); h2.className = 'header'; h2.textContent = "Pinyin";
+                fragment.appendChild(h1); fragment.appendChild(h2);
             }
 
             for (let r = 0; r < gridData.rows; r++) {
                 const rowNum = document.createElement('div');
                 rowNum.className = 'header'; rowNum.textContent = r + 1;
-                sheet.appendChild(rowNum);
+                fragment.appendChild(rowNum);
 
                 for (let c = 0; c < gridData.cols * 2; c++) {
                     const cell = document.createElement('div');
                     cell.className = 'cell ' + (c % 2 !== 0 ? 'pinyin-cell' : '');
                     const ta = document.createElement('textarea');
                     ta.dataset.r = r; ta.dataset.c = c;
-                    ta.value = gridData.values[`${r},${c}`] || "";
+                    
+                    const cellData = gridData.values[`${r},${c}`];
+                    if (cellData) {
+                        ta.value = cellData.text || "";
+                        if (cellData.width) ta.style.width = cellData.width;
+                    }
 
-                    ta.onmousedown = (e) => {
-                        // Only trigger selection logic if SHIFT is held
-                        if (e.shiftKey) {
-                            if (!lastClickedCell) lastClickedCell = ta;
-                            
-                            const r1 = parseInt(lastClickedCell.dataset.r), c1 = parseInt(lastClickedCell.dataset.c);
-                            const r2 = parseInt(ta.dataset.r), c2 = parseInt(ta.dataset.c);
-                            
-                            // Clear previous selection
-                            document.querySelectorAll('.cell').forEach(cl => cl.classList.remove('selected'));
-                            selectedCells.clear();
-
-                            for (let r = Math.min(r1, r2); r <= Math.max(r1, r2); r++) {
-                                for (let c = Math.min(c1, c2); c <= Math.max(c1, c2); c++) {
-                                    const t = document.querySelector(`textarea[data-r="${r}"][data-c="${c}"]`);
-                                    if (t) { t.parentElement.classList.add('selected'); selectedCells.add(t); }
-                                }
-                            }
-                        } else {
-                            // Standard click: Clear selection and update anchor for next shift-click
-                            document.querySelectorAll('.cell').forEach(cl => cl.classList.remove('selected'));
-                            selectedCells.clear();
-                            lastClickedCell = ta;
-                        }
-                    };
-
-                    ta.oninput = function() { 
-                        autoResize(this);
-                        if (c % 2 === 0) {
-                            const pinyinCell = document.querySelector(`textarea[data-r="${r}"][data-c="${c + 1}"]`);
-                            if (pinyinCell) {
-                                pinyinCell.value = pinyinPro.pinyin(this.value.replace(/\s+/g, ''), { toneType: 'symbol' });
-                                autoResize(pinyinCell);
-                            }
-                        }
-                    };
-
+                    ta.onmousedown = handleMouseDown;
+                    ta.oninput = handleInput;
+                    ta.onmouseup = () => { syncDataFromDOM(); };
+                    
                     cell.appendChild(ta);
-                    sheet.appendChild(cell);
-                    setTimeout(() => autoResize(ta), 0);
+                    fragment.appendChild(cell);
                 }
+            }
+            sheet.innerHTML = '';
+            sheet.appendChild(fragment);
+        }
+
+        function handleInput() {
+            const r = this.dataset.r, c = parseInt(this.dataset.c);
+            if (c % 2 === 0) {
+                const pinyinCell = document.querySelector(`textarea[data-r="${r}"][data-c="${c + 1}"]`);
+                if (pinyinCell) pinyinCell.value = pinyinPro.pinyin(this.value.replace(/\s+/g, ''), { toneType: 'symbol' });
+            }
+        }
+
+        function handleMouseDown(e) {
+            if (e.shiftKey && lastClickedCell) {
+                const r1 = parseInt(lastClickedCell.dataset.r), c1 = parseInt(lastClickedCell.dataset.c);
+                const r2 = parseInt(this.dataset.r), c2 = parseInt(this.dataset.c);
+                document.querySelectorAll('.cell').forEach(cl => cl.classList.remove('selected'));
+                selectedCells.clear();
+                for (let r = Math.min(r1, r2); r <= Math.max(r1, r2); r++) {
+                    for (let c = Math.min(c1, c2); c <= Math.max(c1, c2); c++) {
+                        const t = document.querySelector(`textarea[data-r="${r}"][data-c="${c}"]`);
+                        if (t) { t.parentElement.classList.add('selected'); selectedCells.add(t); }
+                    }
+                }
+            } else {
+                document.querySelectorAll('.cell').forEach(cl => cl.classList.remove('selected'));
+                selectedCells.clear();
+                lastClickedCell = this;
             }
         }
 
         document.addEventListener('keydown', (e) => {
-            // Arrow Navigation
+            // Handle Navigation
             if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
                 const active = document.activeElement;
                 if (active.tagName === 'TEXTAREA') {
                     const r = parseInt(active.dataset.r), c = parseInt(active.dataset.c);
-                    let next = null;
-                    if (e.key === 'ArrowUp') next = document.querySelector(`textarea[data-r="${r-1}"][data-c="${c}"]`);
-                    if (e.key === 'ArrowDown') next = document.querySelector(`textarea[data-r="${r+1}"][data-c="${c}"]`);
-                    if (e.key === 'ArrowLeft' && active.selectionStart === 0) next = document.querySelector(`textarea[data-r="${r}"][data-c="${c-1}"]`);
-                    if (e.key === 'ArrowRight' && active.selectionStart === active.value.length) next = document.querySelector(`textarea[data-r="${r}"][data-c="${c+1}"]`);
+                    const map = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] };
+                    const next = document.querySelector(`textarea[data-r="${r + map[e.key][0]}"][data-c="${c + map[e.key][1]}"]`);
                     if (next) { e.preventDefault(); next.focus(); }
                 }
             }
-            // Delete/Copy
-            if (e.key === 'Delete' || e.key === 'Backspace') {
-                selectedCells.forEach(ta => { ta.value = ''; autoResize(ta); });
-                syncDataFromDOM();
-            }
+            
+            // Handle Copy (Ctrl/Cmd + C)
             if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
-                const copyText = Array.from(selectedCells).map(ta => ta.value).join("\t");
-                navigator.clipboard.writeText(copyText);
+                if (selectedCells.size > 0) {
+                    const sortedCells = Array.from(selectedCells).sort((a, b) => a.dataset.r - b.dataset.r || a.dataset.c - b.dataset.c);
+                    let clipboardText = "";
+                    let currentRow = sortedCells[0].dataset.r;
+                    sortedCells.forEach(cell => {
+                        if (cell.dataset.r !== currentRow) { clipboardText += "\n"; currentRow = cell.dataset.r; }
+                        else if (clipboardText !== "") { clipboardText += "\t"; }
+                        clipboardText += cell.value;
+                    });
+                    navigator.clipboard.writeText(clipboardText).then(() => {
+                        const status = document.getElementById('status');
+                        status.textContent = "Copied!";
+                        setTimeout(() => status.textContent = "", 2000);
+                    });
+                }
+            }
+
+            // Handle Delete
+            if (e.key === 'Delete' || e.key === 'Backspace') {
+                selectedCells.forEach(ta => { ta.value = ''; });
+                syncDataFromDOM();
             }
         });
 
