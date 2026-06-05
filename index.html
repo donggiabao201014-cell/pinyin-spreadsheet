@@ -35,7 +35,7 @@
 <body>
 
     <h2>Pinyin Spreadsheet & Hanzii</h2>
-    <p><small>Tip: <b>Highlight (bôi đen)</b> text in any cell to look it up automatically.</small></p>
+    <p><small>Tip: <b>Shift + Click</b> (full cell) | <b>Bôi đen (Highlight)</b> (specific text) to search.</small></p>
     
     <div class="tabs">
         <button class="tab-btn active" onclick="switchTab('editor', this)">Editor</button>
@@ -67,10 +67,7 @@
     <script>
         let gridData = { rows: 5, cols: 3, values: {} };
         let selectedCells = new Set();
-        let lastClickedCell = null;
         let isSplitMode = false;
-        let saveTimeout;
-        let isTyping = false;
 
         function switchTab(id, btn) {
             document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
@@ -85,7 +82,13 @@
             renderGrid();
         };
 
-        // --- All your original helper functions remain identical ---
+        function performSearch(query) {
+            if (!query) return;
+            const frame = document.getElementById('hanziiFrame');
+            frame.src = `https://hanzii.net/search/word/${encodeURIComponent(query)}?hl=vi`;
+            switchTab('dict', document.querySelector('.tab-btn:nth-child(2)'));
+        }
+
         function saveHistory() {
             let history = JSON.parse(localStorage.getItem('pinyinHistory') || '[]');
             history.push(JSON.stringify(gridData));
@@ -103,50 +106,6 @@
             }
         }
 
-        function autoResize(ta) {
-            ta.style.height = '40px'; 
-            ta.style.height = Math.max(40, ta.scrollHeight) + 'px';
-        }
-
-        function highlightCells() {
-            saveHistory();
-            selectedCells.forEach(ta => ta.classList.toggle('highlighted'));
-            syncDataFromDOM();
-            manualSave();
-        }
-
-        function resetGrid() {
-            if (confirm("Reset everything?")) {
-                saveHistory();
-                gridData = { rows: 5, cols: 3, values: {} };
-                localStorage.removeItem('pinyinData');
-                renderGrid();
-            }
-        }
-
-        function triggerAutoSave() {
-            clearTimeout(saveTimeout);
-            saveTimeout = setTimeout(manualSave, 1000);
-        }
-
-        function toggleMode() { isSplitMode = !isSplitMode; renderGrid(); }
-
-        function syncDataFromDOM() {
-            gridData.values = {};
-            document.querySelectorAll('textarea').forEach(ta => {
-                gridData.values[`${ta.dataset.r},${ta.dataset.c}`] = { 
-                    text: ta.value, 
-                    height: ta.style.height,
-                    isHighlighted: ta.classList.contains('highlighted')
-                };
-            });
-        }
-
-        function addRow() { saveHistory(); syncDataFromDOM(); gridData.rows++; renderGrid(); manualSave(); }
-        function subRow() { saveHistory(); syncDataFromDOM(); if(gridData.rows > 1) gridData.rows--; renderGrid(); manualSave(); }
-        function addCol() { saveHistory(); syncDataFromDOM(); gridData.cols++; renderGrid(); manualSave(); }
-        function subCol() { saveHistory(); syncDataFromDOM(); if(gridData.cols > 1) gridData.cols--; renderGrid(); manualSave(); }
-
         function renderGrid() {
             const sheet = document.getElementById('spreadsheet');
             const container = document.getElementById('container');
@@ -157,6 +116,7 @@
                 container.classList.remove('mode-split');
                 sheet.style.gridTemplateColumns = `40px repeat(${gridData.cols * 2}, minmax(120px, auto))`;
             }
+            
             const fragment = document.createDocumentFragment();
             fragment.appendChild(document.createElement('div'));
             for (let i = 0; i < gridData.cols; i++) {
@@ -164,6 +124,7 @@
                 const h2 = document.createElement('div'); h2.className = 'header'; h2.textContent = "Pinyin";
                 fragment.appendChild(h1); fragment.appendChild(h2);
             }
+
             for (let r = 0; r < gridData.rows; r++) {
                 const rowNum = document.createElement('div');
                 rowNum.className = 'header'; rowNum.textContent = r + 1;
@@ -173,99 +134,57 @@
                     cell.className = 'cell ' + (c % 2 !== 0 ? 'pinyin-cell' : '');
                     const ta = document.createElement('textarea');
                     ta.dataset.r = r; ta.dataset.c = c;
-                    const cellData = gridData.values[`${r},${c}`];
-                    if (cellData) {
-                        ta.value = cellData.text || "";
-                        ta.style.height = cellData.height || '40px';
-                        if (cellData.isHighlighted) ta.classList.add('highlighted');
-                    }
-                    ta.onmousedown = handleMouseDown;
-                    // NEW: Trigger lookup on mouse release if text is selected
-                    ta.onmouseup = handleTextSelection;
-                    ta.oninput = () => { if(!isTyping) { saveHistory(); isTyping = true; } handleInput(ta); autoResize(ta); triggerAutoSave(); };
-                    ta.onblur = () => isTyping = false;
+                    const cellInfo = gridData.values[`${r},${c}`];
+                    ta.value = cellInfo?.text || "";
+                    if (cellInfo?.isHighlighted) ta.classList.add('highlighted');
+                    
+                    ta.onmousedown = (e) => {
+                        if (e.shiftKey) { performSearch(ta.value.trim()); return; }
+                        document.querySelectorAll('.cell').forEach(cl => cl.classList.remove('selected'));
+                        ta.parentElement.classList.add('selected');
+                        selectedCells.add(ta);
+                    };
+                    ta.onmouseup = () => {
+                        const sel = window.getSelection().toString().trim();
+                        if (sel) performSearch(sel);
+                    };
+                    ta.oninput = () => { 
+                        if (c % 2 === 0) {
+                            const pinyin = document.querySelector(`textarea[data-r="${r}"][data-c="${c + 1}"]`);
+                            if (pinyin) pinyin.value = pinyinPro.pinyin(ta.value.replace(/\s+/g, ''), { toneType: 'symbol' });
+                        }
+                    };
                     cell.appendChild(ta);
                     fragment.appendChild(cell);
-                    requestAnimationFrame(() => autoResize(ta));
                 }
             }
             sheet.innerHTML = '';
             sheet.appendChild(fragment);
         }
 
-        function handleInput(ta) {
-            const r = ta.dataset.r, c = parseInt(ta.dataset.c);
-            if (c % 2 === 0) {
-                const pinyinCell = document.querySelector(`textarea[data-r="${r}"][data-c="${c + 1}"]`);
-                if (pinyinCell) {
-                    pinyinCell.value = pinyinPro.pinyin(ta.value.replace(/\s+/g, ''), { toneType: 'symbol' });
-                    autoResize(pinyinCell);
-                }
-            }
+        function addRow() { saveHistory(); gridData.rows++; renderGrid(); }
+        function subRow() { saveHistory(); if(gridData.rows > 1) gridData.rows--; renderGrid(); }
+        function addCol() { saveHistory(); gridData.cols++; renderGrid(); }
+        function subCol() { saveHistory(); if(gridData.cols > 1) gridData.cols--; renderGrid(); }
+        function highlightCells() { 
+            saveHistory(); 
+            document.querySelectorAll('.selected textarea').forEach(ta => {
+                ta.classList.toggle('highlighted');
+            });
+            manualSave();
         }
-
-        // NEW: Detect Bôi Đen (Highlight)
-        function handleTextSelection(e) {
-            const selectedText = window.getSelection().toString().trim();
-            if (selectedText.length > 0) {
-                const frame = document.getElementById('hanziiFrame');
-                frame.src = `https://hanzii.net/search/word/${encodeURIComponent(selectedText)}?hl=vi`;
-                switchTab('dict', document.querySelector('.tab-btn:nth-child(2)'));
-            }
-        }
-
-        function handleMouseDown(e) {
-            document.querySelectorAll('.cell').forEach(cl => cl.classList.remove('selected'));
-            selectedCells.clear();
-            lastClickedCell = this;
-            this.parentElement.classList.add('selected');
-            selectedCells.add(this);
-        }
-
-        // --- All your original keyboard/save functions ---
-        document.addEventListener('keydown', (e) => {
-            if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
-                const active = document.activeElement;
-                if (active.tagName === 'TEXTAREA') {
-                    const r = parseInt(active.dataset.r), c = parseInt(active.dataset.c);
-                    const map = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] };
-                    const next = document.querySelector(`textarea[data-r="${r + map[e.key][0]}"][data-c="${c + map[e.key][1]}"]`);
-                    if (next) { e.preventDefault(); next.focus(); }
-                }
-            }
-            if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
-                if (selectedCells.size > 0) {
-                    const sortedCells = Array.from(selectedCells).sort((a, b) => a.dataset.r - b.dataset.r || a.dataset.c - b.dataset.c);
-                    let clipboardText = "";
-                    let currentRow = sortedCells[0].dataset.r;
-                    sortedCells.forEach(cell => {
-                        if (cell.dataset.r !== currentRow) { clipboardText += "\n"; currentRow = cell.dataset.r; }
-                        else if (clipboardText !== "") { clipboardText += "\t"; }
-                        clipboardText += cell.value;
-                    });
-                    navigator.clipboard.writeText(clipboardText).then(() => {
-                        const status = document.getElementById('status');
-                        status.textContent = "Copied!";
-                        setTimeout(() => status.textContent = "", 2000);
-                    });
-                }
-            }
-            if (e.key === 'Delete' || e.key === 'Backspace') {
-                if (document.activeElement.tagName !== 'TEXTAREA') {
-                    saveHistory();
-                    selectedCells.forEach(ta => { ta.value = ''; autoResize(ta); });
-                    syncDataFromDOM();
-                    triggerAutoSave();
-                }
-            }
-        });
-
+        function toggleMode() { isSplitMode = !isSplitMode; renderGrid(); }
+        function resetGrid() { if(confirm("Reset?")) { gridData = { rows: 5, cols: 3, values: {} }; localStorage.removeItem('pinyinData'); renderGrid(); } }
         function manualSave() { 
-            syncDataFromDOM(); 
+            gridData.values = {}; 
+            document.querySelectorAll('textarea').forEach(ta => {
+                gridData.values[`${ta.dataset.r},${ta.dataset.c}`] = {
+                    text: ta.value,
+                    isHighlighted: ta.classList.contains('highlighted')
+                };
+            });
             localStorage.setItem('pinyinData', JSON.stringify(gridData));
-            const status = document.getElementById('status');
-            status.textContent = "Saved!";
-            setTimeout(() => status.textContent = "", 2000);
+            const s = document.getElementById('status'); s.textContent = "Saved!"; setTimeout(() => s.textContent = "", 2000);
         }
     </script>
 </body>
